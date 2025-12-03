@@ -16,7 +16,6 @@ config.local.py
 # -----------------
 # Data Files
 # -----------------
-*.txt
 *.json
 *.jsonl
 *.csv
@@ -150,3 +149,5 @@ exports/
 ncert_vector_db/
 ncert_index/
 processed_chunks/
+
+.env.example
