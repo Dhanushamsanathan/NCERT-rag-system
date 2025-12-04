@@ -408,22 +408,42 @@ Remember: Your answer comes from these NCERT sources above."""
         query_lower = query.lower()
 
         # Look for exact matches or close synonyms
-        if "collective noun" in query_lower:
+        if "collective noun" in query_lower or ("collective" in query_lower and "noun" in query_lower):
             # Extract all examples from context
             examples = []
+            seen = set()  # Avoid duplicates
+
             for source in sources[:3]:
                 content = source['content']
-                # Find collective noun patterns
+                # Find patterns like "bundle of sticks" or blanks with collective nouns
                 import re
+
+                # Find "X of Y" patterns
                 matches = re.findall(r'(\w+)\s+of\s+(\w+)', content, re.IGNORECASE)
                 for match in matches:
-                    examples.append(f"{match[0]} of {match[1]}")
+                    collective = f"{match[0].lower()} of {match[1].lower()}"
+                    if collective not in seen:
+                        seen.add(collective)
+                        examples.append(f"{match[0]} of {match[1]}")
+
+                # Also check word bank for collective nouns
+                if 'word bank' in content.lower():
+                    # Look for collective nouns in word bank context
+                    bank_words = re.findall(r'(bundle|swarm|herd|pack|flock|bunch|bouquet)', content, re.IGNORECASE)
+                    for word in bank_words:
+                        if word.lower() not in [e.split()[0].lower() for e in examples]:
+                            examples.append(f"{word} of animals/items")
 
             if examples:
-                # Explain based on examples
-                return (f"Based on the NCERT textbook examples:\n"
-                        f"A collective noun is a word for a group of things.\n"
-                        f"Examples: {', '.join(examples[:3])}")
+                # Format as list
+                if len(examples) >= 3:
+                    return (f"Based on the NCERT textbook, three collective nouns are:\n"
+                            f"1. {examples[0].capitalize()}\n"
+                            f"2. {examples[1].capitalize()}\n"
+                            f"3. {examples[2].capitalize()}")
+                else:
+                    return (f"From the NCERT text, collective nouns are words for groups:\n"
+                            f"{', '.join(examples)}")
 
             return "I couldn't find examples of collective nouns in the provided text."
 
