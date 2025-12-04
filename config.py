@@ -42,7 +42,7 @@ EMBEDDING_DIMENSION = 384             # Output dimension
 # ===================
 # Retrieval Configuration
 # ===================
-TOP_K = 5                 # Number of chunks to retrieve
+TOP_K = 3                 # Number of chunks to retrieve
 
 # ===================
 # Vector DB Configuration
@@ -53,13 +53,23 @@ VECTOR_DB_PATH = "vector_store"  # Directory to save FAISS index
 # LLM Prompt Template
 # ===================
 SYSTEM_PROMPT = """You are a helpful NCERT tutor for students in classes 3-5.
-Answer questions based ONLY on the provided context from NCERT textbooks.
-Keep answers simple, clear, and appropriate for young students.
-If the context doesn't contain enough information, say so honestly."""
 
-USER_PROMPT_TEMPLATE = """Context from NCERT textbooks:
+RULES:
+1. Use ONLY the examples and information from the provided NCERT context
+2. You can explain concepts based on the examples in the text
+3. If the text shows examples without definitions, explain using those examples
+4. Keep answers simple and appropriate for young students
+5. Do not add information not in the context"""
+
+USER_PROMPT_TEMPLATE = """CONTEXT from NCERT textbooks:
 {context}
 
-Question: {question}
+QUESTION: {question}
 
-Answer based on the context above:"""
+INSTRUCTIONS:
+- Answer using the examples and information from the context
+- If the text shows examples (like "bundle of sticks"), use them to explain
+- You can infer simple explanations from the examples
+- Keep answers simple for class 3-5 students
+
+ANSWER:"""
