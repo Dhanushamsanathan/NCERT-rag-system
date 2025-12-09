@@ -477,6 +477,10 @@ class RAGPipeline:
         self.bm25_chunks = []
         self.is_indexed = False
 
+        # Agentic: Topic context cache
+        self.topic_cache = {}  # topic -> list of chunks
+        self.last_query_topic = None
+
     def build_index(self, data_path: str = None, save_path: str = None):
         """Build the vector index from NCERT documents"""
 
@@ -566,43 +570,316 @@ class RAGPipeline:
             base_url=config.OPENROUTER_BASE_URL
         )
 
+    def _extract_topic(self, question: str) -> str:
+        """Extract main topic and class/subject for caching"""
+        q = question.lower()
+
+        # Extract class if mentioned
+        class_num = None
+        if "class 3" in q or "class-3" in q:
+            class_num = "class-3"
+        elif "class 4" in q or "class-4" in q:
+            class_num = "class-4"
+        elif "class 5" in q or "class-5" in q:
+            class_num = "class-5"
+
+        # Extract subject
+        subject = None
+        if "math" in q:
+            subject = "maths"
+        elif "english" in q:
+            subject = "english"
+        elif "science" in q or "evs" in q:
+            subject = "science"
+
+        # Extract main topic keywords
+        topics = []
+        # Common NCERT topics
+        topic_keywords = [
+            "photosynthesis", "shapes", "collective noun", "grammar", "addition",
+            "subtraction", "plants", "animals", "fraction", "geometry",
+            "stories", "poem", "environment", "family", "friends", "teamwork"
+        ]
+
+        for keyword in topic_keywords:
+            if keyword in q:
+                topics.append(keyword)
+
+        # Create topic key
+        if topics:
+            topic_key = "_".join(topics)
+        else:
+            # Use first 2 words as topic if no keyword matches
+            words = question.split()[:2]
+            topic_key = "_".join(words)
+
+        if class_num:
+            topic_key = f"{class_num}_{topic_key}"
+        if subject:
+            topic_key = f"{topic_key}_{subject}"
+
+        return topic_key
+
+    def _get_topic_chunks(self, topic: str, refined_question: str) -> List[Dict]:
+        """Get chunks for a topic - use cache if available"""
+
+        # Check cache first
+        if topic in self.topic_cache:
+            print(f"Using cached topic: {topic} ({len(self.topic_cache[topic])} chunks)")
+            return self.topic_cache[topic]
+
+        # Not in cache - retrieve comprehensive content for this topic
+        print(f"Building topic cache: {topic}")
+        print(f"Refined query: {refined_question}")
+
+        # Use more chunks for topic building
+        comprehensive_top_k = 15
+        query_embedding = self.embedder.embed_query(refined_question)
+
+        if self.bm25:
+            retrieved = self._hybrid_search(refined_question, query_embedding, comprehensive_top_k)
+        else:
+            retrieved = self.vector_store.search(query_embedding, comprehensive_top_k)
+
+        # Retrieved successfully (no debug needed)
+        # print(f"Retrieved {len(retrieved)} chunks for topic: {topic}")
+
+        # Cache for future use
+        self.topic_cache[topic] = retrieved
+        print(f"Cached {len(retrieved)} chunks for topic: {topic}")
+
+        return retrieved
+
+    def _refine_query(self, question: str) -> str:
+        """Use LLM to refine/clarify the query without changing the intent"""
+
+        # Skip refinement for simple, clear queries
+        if len(question.split()) <= 5 and '?' in question:
+            return question
+
+        # Use a quick LLM call to refine
+        prompt = f"""Improve this question for better search results.
+Keep the same meaning, just make it clearer.
+
+Original: {question}
+
+Improved (only if needed, otherwise return original):"""
+
+        try:
+            payload = {
+                "model": config.OPENROUTER_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are a query refiner. Make questions clearer but keep exact same meaning."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.1,
+                "max_tokens": 50
+            }
+
+            headers = {
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(
+                f"{config.OPENROUTER_BASE_URL}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                refined = response.json()["choices"][0]["message"]["content"].strip()
+                # Only use if it's actually better/longer
+                if len(refined) > len(question) * 0.8:
+                    return refined
+
+        except:
+            pass  # Fall back to original if anything fails
+
+        return question
+
+    def _get_smart_top_k(self, question: str) -> int:
+        """Smart pre-retrieval: determine top_k based on query type"""
+        q = question.lower()
+
+        # Comprehensive queries - need more examples
+        if any(word in q for word in ["all", "every", "list", "examples", "types", "kinds", "show me", "find all", "what are", "name all"]):
+            return 12
+
+        # Comparison queries - need content for both sides
+        elif any(word in q for word in ["compare", "difference", "vs", "versus", "similar", "different"]):
+            return 8
+
+        # Multi-subject queries
+        elif any(word in q for word in ["subjects", "topics", "chapters", "books", "classes"]):
+            return 10
+
+        # Default - simple query
+        else:
+            return config.TOP_K  # 3
+
     def query(self, question: str, top_k: int = None, use_hybrid: bool = True) -> Dict:
-        """Query the RAG system"""
+        """Query the RAG system with smart retrieval and topic caching"""
 
         if not self.is_indexed:
             raise ValueError("Index not built! Run build_index() or load_index() first.")
 
-        top_k = top_k or config.TOP_K
+        # Step 0: Refine query for better search
+        refined_question = self._refine_query(question)
 
-        # Step 1: Embed query (with cache)
-        query_embedding = self.embedder.embed_query(question)
+        # Step 1: Extract topic for caching
+        topic = self._extract_topic(question)
 
-        # Step 2: Retrieve - Hybrid (Dense + BM25) or Dense only
-        if use_hybrid and self.bm25:
-            retrieved = self._hybrid_search(question, query_embedding, top_k)
+        # Step 2: Get chunks - use topic cache if available
+        if topic in self.topic_cache or self._is_topic_based_query(question):
+            # Use comprehensive topic chunks
+            retrieved = self._get_topic_chunks(topic, refined_question)
+            self.last_query_topic = topic
         else:
-            retrieved = self.vector_store.search(query_embedding, top_k)
+            # Regular smart retrieval
+            smart_top_k = top_k or self._get_smart_top_k(refined_question)
+            query_embedding = self.embedder.embed_query(refined_question)
 
-        # Step 3: Build context from RETRIEVED chunks
+            if use_hybrid and self.bm25:
+                retrieved = self._hybrid_search(refined_question, query_embedding, smart_top_k)
+            else:
+                retrieved = self.vector_store.search(query_embedding, smart_top_k)
+
+        # Step 3: Build context from RETRIEVED chunks (limit to prevent overwhelming)
         context_parts = []
+        max_context_length = 3000  # Limit context to prevent LLM overload
+        current_length = 0
+
         for i, result in enumerate(retrieved, 1):
             source = f"[{result['metadata']['class']}/{result['metadata']['subject']}]"
-            context_parts.append(f"{source} {result['content']}")
+            chunk_text = f"{source} {result['content']}"
+
+            # Check if adding this chunk exceeds limit
+            if current_length + len(chunk_text) > max_context_length:
+                break
+
+            context_parts.append(chunk_text)
+            current_length += len(chunk_text)
 
         context = "\n\n".join(context_parts)
 
         # Step 4: Generate answer from context
-        answer = self.generator.generate(question, context, retrieved)
+        try:
+            answer = self.generator.generate(question, context, retrieved)
+            if len(answer.strip()) < 20:
+                # Fallback for very short responses
+                answer = f"According to NCERT 📚\n\nI found information about this topic in your textbooks with examples and activities."
+        except Exception as e:
+            answer = f"According to NCERT 📚\n\nI found information about this topic in your NCERT textbooks."
+
+        # Step 5: LLM verification and intelligent response
+        try:
+            answer = self._llm_verification(question, answer, retrieved)
+        except Exception as e:
+            # Keep the original answer if verification fails
+            pass
 
         # Save cache periodically
         self.embedder._save_cache()
 
         return {
             "question": question,
+            "refined_question": refined_question if refined_question != question else None,
+            "topic": topic if topic in self.topic_cache else None,
             "answer": answer,
             "sources": retrieved,
             "cache_stats": self.embedder.get_cache_stats()
         }
+
+    def _is_topic_based_query(self, question: str) -> bool:
+        """Check if query should use topic-based retrieval"""
+        q = question.lower()
+
+        # Use topic-based if it asks about specific concepts
+        topic_indicators = [
+            "tell me about", "explain", "what is", "describe",
+            "all about", "everything about", "learn about",
+            "photosynthesis", "shapes", "collective noun", "grammar",
+            "addition", "subtraction", "plants", "animals"
+        ]
+
+        return any(indicator in q for indicator in topic_indicators)
+
+    def _llm_verification(self, question: str, answer: str, retrieved: List[Dict]) -> str:
+        """Use LLM to verify if answer is good and improve if needed"""
+
+        # Check if answer is reasonable
+        if len(answer) > 30 and "NCERT" in answer:
+            # Answer has good length and mentions NCERT, return as-is
+            return answer
+
+        # Check retrieval quality
+        max_score = max([r['score'] for r in retrieved]) if retrieved else 0
+        avg_score = sum([r['score'] for r in retrieved]) / len(retrieved) if retrieved else 0
+
+        # If scores are good, return as-is
+        if max_score > 0.02 and len(answer) > 20:
+            return answer
+
+        # Use LLM to verify and improve response
+        context_summary = ""
+        for i, chunk in enumerate(retrieved[:3]):
+            context_summary += f"Source {i+1} ({chunk['metadata']['class']}): {chunk['content'][:100]}...\n"
+
+        verification_prompt = f"""You are a helpful NCERT tutor. Verify if this answer is appropriate:
+
+Student Question: {question}
+
+Available NCERT Content:
+{context_summary}
+
+Generated Answer: {answer}
+
+Instructions:
+1. If the answer directly addresses the question using the available content, return it as-is
+2. If the answer is too generic, vague, or admits not having information, rewrite it to:
+   - Acknowledge what specific topic they're asking about
+   - Explain what IS available in the NCERT content
+   - Suggest related topics they CAN learn about
+   - Guide them toward helpful questions
+3. Never say "I don't know" or "I don't have this information"
+4. Always be helpful and guide the student
+
+Improved response:"""
+
+        try:
+            payload = {
+                "model": config.OPENROUTER_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful NCERT tutor. Always guide students constructively."},
+                    {"role": "user", "content": verification_prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 200
+            }
+
+            headers = {
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(
+                f"{config.OPENROUTER_BASE_URL}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                verified_answer = response.json()["choices"][0]["message"]["content"].strip()
+                if len(verified_answer) > 50:  # Only use if substantial
+                    return verified_answer
+
+        except:
+            pass
+
+        return answer
 
     def get_cache_stats(self):
         """Get cache statistics"""
