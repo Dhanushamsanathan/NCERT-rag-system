@@ -40,20 +40,34 @@ def build_index():
     print(f"Saved to: {config.VECTOR_DB_PATH}/")
 
 
+# Global RAG instance for performance
+_rag_instance = None
+
+def get_rag_instance():
+    """Get or create RAG instance (load once, reuse for all queries)"""
+    global _rag_instance
+    if _rag_instance is None:
+        print("Initializing NCERT RAG System...")
+        _rag_instance = RAGPipeline()
+
+        # Load existing index if available
+        if os.path.exists(config.VECTOR_DB_PATH):
+            print("Loading index...")
+            _rag_instance.load_index()
+        else:
+            print("No index found. Building new index...")
+            _rag_instance.build_index()
+
+        print("✅ System ready!\n")
+
+    return _rag_instance
+
 def interactive_mode():
     """Interactive Q&A mode"""
     print_banner()
 
-    # Initialize RAG
-    rag = RAGPipeline()
-
-    # Load or build index
-    if os.path.exists(config.VECTOR_DB_PATH):
-        print("Loading existing index...")
-        rag.load_index()
-    else:
-        print("No index found. Building new index...")
-        rag.build_index()
+    # Get RAG instance (loads only once)
+    rag = get_rag_instance()
 
     print("\n" + "="*60)
     print("Interactive Q&A Mode")
@@ -106,15 +120,8 @@ def single_query(question: str):
     """Answer a single question"""
     print_banner()
 
-    # Initialize RAG
-    rag = RAGPipeline()
-
-    # Load or build index
-    if os.path.exists(config.VECTOR_DB_PATH):
-        rag.load_index()
-    else:
-        print("No index found. Building new index...")
-        rag.build_index()
+    # Get RAG instance (loads only once)
+    rag = get_rag_instance()
 
     # Query
     print(f"\nQuestion: {question}\n")

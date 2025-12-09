@@ -397,9 +397,12 @@ Remember: Your answer comes from these NCERT sources above."""
             response.raise_for_status()
 
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            answer = result["choices"][0]["message"]["content"]
+            print(f"DEBUG: LLM response successful, length: {len(answer)}")
+            return answer
 
         except Exception as e:
+            print(f"DEBUG: LLM API failed: {e}")
             # Fallback: extract directly from context
             return self._fallback_answer(query, context, sources)
 
