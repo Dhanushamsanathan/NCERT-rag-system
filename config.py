@@ -12,7 +12,7 @@ load_dotenv()
 # ===================
 # API Configuration
 # ===================
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
 

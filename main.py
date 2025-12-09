@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
 from rag_pipeline import RAGPipeline
+from conversation_manager import ConversationManager
 
 
 def print_banner():
@@ -40,34 +41,38 @@ def build_index():
     print(f"Saved to: {config.VECTOR_DB_PATH}/")
 
 
-# Global RAG instance for performance
-_rag_instance = None
+# Global Conversation Manager instance for performance
+_conversation_manager = None
 
-def get_rag_instance():
-    """Get or create RAG instance (load once, reuse for all queries)"""
-    global _rag_instance
-    if _rag_instance is None:
+def get_conversation_manager():
+    """Get or create ConversationManager (load once, reuse for all queries)"""
+    global _conversation_manager
+    if _conversation_manager is None:
         print("Initializing NCERT RAG System...")
-        _rag_instance = RAGPipeline()
+
+        # Initialize RAG Pipeline
+        rag = RAGPipeline()
 
         # Load existing index if available
         if os.path.exists(config.VECTOR_DB_PATH):
             print("Loading index...")
-            _rag_instance.load_index()
+            rag.load_index()
         else:
             print("No index found. Building new index...")
-            _rag_instance.build_index()
+            rag.build_index()
 
+        # Initialize ConversationManager
+        _conversation_manager = ConversationManager(rag)
         print("✅ System ready!\n")
 
-    return _rag_instance
+    return _conversation_manager
 
 def interactive_mode():
     """Interactive Q&A mode"""
     print_banner()
 
-    # Get RAG instance (loads only once)
-    rag = get_rag_instance()
+    # Get ConversationManager (loads only once)
+    conv_manager = get_conversation_manager()
 
     print("\n" + "="*60)
     print("Interactive Q&A Mode")
@@ -90,23 +95,32 @@ def interactive_mode():
                 continue
 
             # Query
-            print("\nSearching...")
-            result = rag.query(question)
+            print("\nThinking...")
+            result = conv_manager.route_query(question)
 
             # Display answer
             print("\n" + "-"*40)
-            print("Answer:")
+            print("ANSWER:")
             print("-"*40)
             print(result['answer'])
 
-            # Display sources
-            print("\n" + "-"*40)
-            print("Sources:")
-            print("-"*40)
-            for i, source in enumerate(result['sources'][:3], 1):
-                meta = source['metadata']
-                score = source['score']
-                print(f"{i}. [{meta['class']}/{meta['subject']}] (score: {score:.3f})")
+            # Show conversation mode
+            if 'conversation_mode' in result:
+                mode = result['conversation_mode'].upper()
+                if mode == "NCERT_MODE":
+                    print(f"\n🔍 Mode: {mode}")
+                else:
+                    print(f"\n💬 Mode: {mode}")
+
+            # Show sources for NCERT queries
+            if result.get('conversation_mode') == 'ncert_mode' and 'sources' in result:
+                print("\n" + "-"*40)
+                print("SOURCES:")
+                print("-"*40)
+                for i, source in enumerate(result['sources'][:3], 1):
+                    meta = source['metadata']
+                    score = source['score']
+                    print(f"{i}. [{meta['class']}/{meta['subject']}] (score: {score:.3f})")
                 print(f"   {source['content'][:100]}...")
 
         except KeyboardInterrupt:
@@ -120,14 +134,14 @@ def single_query(question: str):
     """Answer a single question"""
     print_banner()
 
-    # Get RAG instance (loads only once)
-    rag = get_rag_instance()
+    # Get ConversationManager (loads only once)
+    conv_manager = get_conversation_manager()
 
     # Query
     print(f"\nQuestion: {question}\n")
-    print("Searching...")
+    print("Thinking...")
 
-    result = rag.query(question)
+    result = conv_manager.route_query(question)
 
     # Display
     print("\n" + "="*60)
@@ -135,12 +149,22 @@ def single_query(question: str):
     print("="*60)
     print(result['answer'])
 
-    print("\n" + "-"*40)
-    print("SOURCES:")
-    print("-"*40)
-    for i, source in enumerate(result['sources'][:3], 1):
-        meta = source['metadata']
-        print(f"{i}. {meta['class']}/{meta['subject']} (score: {source['score']:.3f})")
+    # Show conversation mode
+    if 'conversation_mode' in result:
+        mode = result['conversation_mode'].upper()
+        if mode == "NCERT_MODE":
+            print(f"\n🔍 Mode: {mode}")
+        else:
+            print(f"\n💬 Mode: {mode}")
+
+    # Show sources for NCERT queries only
+    if result.get('conversation_mode') == 'ncert_mode' and 'sources' in result:
+        print("\n" + "-"*40)
+        print("SOURCES:")
+        print("-"*40)
+        for i, source in enumerate(result['sources'][:3], 1):
+            meta = source['metadata']
+            print(f"{i}. {meta['class']}/{meta['subject']} (score: {source['score']:.3f})")
 
 
 def show_help():
