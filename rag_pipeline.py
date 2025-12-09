@@ -473,6 +473,8 @@ class RAGPipeline:
         self.embedder = None
         self.vector_store = None
         self.generator = None
+        self.bm25 = None  # BM25 for hybrid search
+        self.bm25_chunks = []
         self.is_indexed = False
 
     def build_index(self, data_path: str = None, save_path: str = None):
@@ -509,8 +511,13 @@ class RAGPipeline:
         self.vector_store = VectorStore(self.embedder.dimension)
         self.vector_store.add(embeddings, chunks)
 
+        # Build BM25 index
+        print("\n[+] Building BM25 index...")
+        self._build_bm25(chunks)
+
         # Save to disk
         self.vector_store.save(save_path)
+        self._save_bm25(save_path)
 
         # Initialize generator
         self._init_generator()
@@ -542,6 +549,9 @@ class RAGPipeline:
         self.vector_store = VectorStore(self.embedder.dimension)
         self.vector_store.load(load_path)
 
+        # Load BM25 index
+        self._load_bm25(load_path)
+
         # Initialize generator
         self._init_generator()
 
@@ -556,7 +566,7 @@ class RAGPipeline:
             base_url=config.OPENROUTER_BASE_URL
         )
 
-    def query(self, question: str, top_k: int = None) -> Dict:
+    def query(self, question: str, top_k: int = None, use_hybrid: bool = True) -> Dict:
         """Query the RAG system"""
 
         if not self.is_indexed:
@@ -567,8 +577,11 @@ class RAGPipeline:
         # Step 1: Embed query (with cache)
         query_embedding = self.embedder.embed_query(question)
 
-        # Step 2: Retrieve relevant chunks using VECTOR SEARCH
-        retrieved = self.vector_store.search(query_embedding, top_k)
+        # Step 2: Retrieve - Hybrid (Dense + BM25) or Dense only
+        if use_hybrid and self.bm25:
+            retrieved = self._hybrid_search(question, query_embedding, top_k)
+        else:
+            retrieved = self.vector_store.search(query_embedding, top_k)
 
         # Step 3: Build context from RETRIEVED chunks
         context_parts = []
@@ -601,3 +614,86 @@ class RAGPipeline:
         """Clear embedding cache"""
         if self.embedder:
             self.embedder.clear_cache()
+
+    # --- BM25 Helper Methods ---
+
+    def _build_bm25(self, chunks: List[Chunk]):
+        """Build BM25 index from chunks"""
+        from rank_bm25 import BM25Okapi
+        self.bm25_chunks = chunks
+        tokenized = [self._tokenize(c.content) for c in chunks]
+        self.bm25 = BM25Okapi(tokenized)
+        print(f"BM25 index built: {len(chunks)} docs")
+
+    def _tokenize(self, text: str) -> List[str]:
+        """Simple tokenizer for BM25"""
+        text = re.sub(r'[^\w\s]', ' ', text.lower())
+        return [t for t in text.split() if len(t) > 2]
+
+    def _save_bm25(self, path: str):
+        """Save BM25 data"""
+        with open(os.path.join(path, "bm25.pkl"), 'wb') as f:
+            pickle.dump(self.bm25_chunks, f)
+
+    def _load_bm25(self, path: str):
+        """Load BM25 data"""
+        bm25_path = os.path.join(path, "bm25.pkl")
+        if os.path.exists(bm25_path):
+            from rank_bm25 import BM25Okapi
+            with open(bm25_path, 'rb') as f:
+                self.bm25_chunks = pickle.load(f)
+            tokenized = [self._tokenize(c.content) for c in self.bm25_chunks]
+            self.bm25 = BM25Okapi(tokenized)
+            print(f"BM25 index loaded: {len(self.bm25_chunks)} docs")
+
+    def _bm25_search(self, query: str, top_k: int) -> List[Dict]:
+        """BM25 keyword search"""
+        if not self.bm25:
+            return []
+        tokens = self._tokenize(query)
+        scores = self.bm25.get_scores(tokens)
+        top_idx = np.argsort(scores)[::-1][:top_k]
+        results = []
+        for idx in top_idx:
+            if scores[idx] > 0:
+                chunk = self.bm25_chunks[idx]
+                results.append({
+                    "chunk_id": chunk.chunk_id,
+                    "content": chunk.content,
+                    "metadata": chunk.metadata,
+                    "score": float(scores[idx])
+                })
+        return results
+
+    def _hybrid_search(self, query: str, query_embedding: np.ndarray, top_k: int) -> List[Dict]:
+        """Combine Dense + BM25 using RRF (Reciprocal Rank Fusion)"""
+        k = 60  # RRF constant
+
+        # Get both results
+        dense_results = self.vector_store.search(query_embedding, top_k * 2)
+        bm25_results = self._bm25_search(query, top_k * 2)
+
+        # RRF fusion
+        rrf_scores = {}
+        chunk_data = {}
+
+        for rank, r in enumerate(dense_results):
+            cid = r["chunk_id"]
+            rrf_scores[cid] = rrf_scores.get(cid, 0) + 1.0 / (k + rank + 1)
+            chunk_data[cid] = r
+
+        for rank, r in enumerate(bm25_results):
+            cid = r["chunk_id"]
+            rrf_scores[cid] = rrf_scores.get(cid, 0) + 1.0 / (k + rank + 1)
+            if cid not in chunk_data:
+                chunk_data[cid] = r
+
+        # Sort by RRF score and return top_k
+        sorted_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+        results = []
+        for cid in sorted_ids[:top_k]:
+            r = chunk_data[cid].copy()
+            r["score"] = rrf_scores[cid]
+            results.append(r)
+
+        return results
