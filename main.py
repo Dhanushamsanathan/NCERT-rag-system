@@ -21,14 +21,7 @@ from conversation_manager import ConversationManager
 
 def print_banner():
     """Print welcome banner"""
-    print("""
-╔══════════════════════════════════════════════════════════════╗
-║             NCERT RAG System v1 (Prototype)                  ║
-║         Classes 3-5 | OpenRouter LLM | FAISS                 ║
-╚══════════════════════════════════════════════════════════════╝
-    """)
-
-
+   
 def build_index():
     """Build the RAG index from NCERT documents"""
     print_banner()

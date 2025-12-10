@@ -14,7 +14,7 @@ load_dotenv()
 # ===================
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "microsoft/wizardlm-2-8x22b")
 
 # ===================
 # Data Configuration
@@ -24,8 +24,8 @@ NCERT_DATA_PATH = os.getenv(
     "/home/dhanush/main_frames/ncert-textbook/final-ncert- dataset/output-single-image"
 )
 
-# Classes to include (for prototype: 3, 4, 5)
-TARGET_CLASSES = ["class-3", "class-4", "class-5"]
+# Classes to include (for prototype: 1-7)
+TARGET_CLASSES = [f"class-{i}" for i in range(1, 8)]  # class-1 through class-7
 
 # ===================
 # Chunking Configuration

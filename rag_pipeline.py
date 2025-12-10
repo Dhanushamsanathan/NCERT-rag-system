@@ -375,8 +375,7 @@ Remember: Your answer comes from these NCERT sources above."""
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.1,  # Lower temperature for more accurate responses
-            "max_tokens": 300,
-            "stop": ["Source:", "\n\n", "#"]  # Stop on new sections
+            "max_tokens": 500
         }
 
         # Call OpenRouter API

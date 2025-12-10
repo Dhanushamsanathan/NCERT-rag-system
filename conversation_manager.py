@@ -70,13 +70,84 @@ class ConversationManager:
         return False
 
     def route_query(self, question: str) -> Dict[str, any]:
-        """Route query to appropriate handler and return response"""
+        """Agentic routing based on RAG retrieval results"""
         self.state.conversation_turn += 1
+        q_lower = question.lower().strip()
 
-        if self.needs_ncert_search(question):
-            return self._handle_ncert_query(question)
-        else:
+        # Handle explicit conversational queries first
+        if any(word in q_lower for word in ["hello", "hi", "hey"]):
             return self._handle_normal_query(question)
+
+        if any(word in q_lower for word in ["thanks", "thank you", "thx"]):
+            return self._handle_normal_query(question)
+
+        if any(word in q_lower for word in ["help", "how can you help", "what can you do"]):
+            return self._handle_normal_query(question)
+
+        # For everything else, try RAG first and let retrieved content decide
+        return self._try_rag_first(question)
+
+    def _try_rag_first(self, question: str) -> Dict[str, any]:
+        """Try RAG search first - let retrieved content decide response type"""
+        try:
+            # Perform RAG search
+            result = self.rag_pipeline.query(question, top_k=3)
+            sources = result.get('sources', [])
+
+            # Analyze retrieved content
+            if self._has_relevant_ncert_content(question, sources):
+                # Good NCERT content found - use it
+                self.state.last_was_ncert = True
+
+                # Update topic for caching
+                if 'topic' in result:
+                    self.state.current_topic = result['topic']
+                    if result['topic'] in self.rag_pipeline.topic_cache:
+                        self.state.topic_chunks = self.rag_pipeline.topic_cache[result['topic']]
+
+                return {
+                    **result,
+                    "response_type": "ncert_search",
+                    "conversation_mode": "ncert_mode"
+                }
+            else:
+                # No relevant content - handle as normal query
+                return self._handle_normal_query(question)
+
+        except Exception as e:
+            print(f"DEBUG: RAG search failed: {e}")
+            return self._handle_normal_query(question)
+
+    def _has_relevant_ncert_content(self, question: str, sources: list) -> bool:
+        """Check if retrieved sources are relevant to the question"""
+        if not sources:
+            return False
+
+        # Check semantic similarity scores
+        max_score = max([s['score'] for s in sources[:3]])
+
+        # Quick reject: very low scores
+        if max_score < 0.02:
+            return False
+
+        # Check content quality and relevance
+        total_content_length = sum(len(s['content']) for s in sources[:3])
+
+        # Check if question terms appear in content
+        q_words = [w for w in question.lower().split() if len(w) > 3]
+        term_matches = 0
+
+        for source in sources[:3]:
+            content_lower = source['content'].lower()
+            for word in q_words:
+                if word in content_lower:
+                    term_matches += 1
+
+        # Decision: relevant if good score OR decent score with content matches
+        has_content = total_content_length > 200
+        has_term_match = term_matches > 0
+
+        return (max_score > 0.1) or (max_score > 0.05 and (has_content or has_term_match))
 
     def _handle_ncert_query(self, question: str) -> Dict[str, any]:
         """Handle NCERT-related queries with intelligent caching"""
@@ -235,7 +306,7 @@ Just ask your question and I'll help you using actual NCERT content!"""
 
     def _generate_conversational_response(self, question: str) -> str:
         """Generate general conversational response"""
-        return f"I'm here to help with NCERT textbook questions for Classes 3-5! 🎓\n\nCould you ask me about a specific topic from your school books? I can explain concepts using examples directly from the NCERT textbooks."
+        return f"I'm here to help with NCERT textbook questions for Classes 1-7! 🎓\n\nCould you ask me about a specific topic from your school books? I can explain concepts using examples directly from the NCERT textbooks.\n\nFor example:\n- \"What is photosynthesis?\"\n- \"What are collective nouns?\"\n- \"Why should we keep our environment clean?\""
 
     def get_conversation_stats(self) -> Dict[str, any]:
         """Get conversation statistics"""
