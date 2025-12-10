@@ -90,18 +90,44 @@ Just ask your question and I'll help you using actual NCERT content!"""
                 print(f"\n{i}. [{source['metadata']['class']}] {source['metadata']['subject']} - Score: {source['score']:.3f}")
                 print(f"   {source['content'][:150]}...")
         else:
-            # Low score content
-            print(f"\nMODE: CONVERSATION 💬 (Low similarity: {max_score:.3f})")
-            print(f"\nI can help you with NCERT textbook questions for Classes 1-7! 🎓")
+            # Low score content - check if it's a question
+            if any(word in q_lower for word in ["who", "what", "when", "where", "why", "how", "explain", "describe"]):
+                # It's a question but not in NCERT - suggest related topics
+                print(f"\nMODE: CONVERSATION 💬 (Topic not in NCERT)")
+                print(f"\nI specialize in NCERT textbook content for Classes 1-7 📚")
+                print(f"While I don't have information about that specific topic, I can help you with many interesting subjects!")
+                print(f"\nPopular NCERT topics you might like:")
+                print(f"  🌿 **Science**: Photosynthesis, plants, animals, environment")
+                print(f"  🔢 **Math**: Addition, subtraction, multiplication, fractions")
+                print(f"  📖 **English**: Grammar, collective nouns, stories, poems")
+                print(f"  🏛️ **Social Studies**: Indian history, different types of houses, festivals")
+                print(f"\nWould you like to try asking about any of these NCERT topics?")
+            else:
+                # Low score but not a question
+                print(f"\nMODE: CONVERSATION 💬 (Low similarity: {max_score:.3f})")
+                print(f"\nI can help you with NCERT textbook questions for Classes 1-7! 🎓")
     else:
-        # No good content found
-        print(f"\nMODE: CONVERSATION 💬 (No sources found)")
-        print(f"\nI can help you with NCERT textbook questions for Classes 1-7! 🎓")
-        print(f"\nTry asking about specific topics from your school books:")
-        print(f"  - \"What is photosynthesis?\"")
-        print(f"  - \"What are collective nouns?\"")
-        print(f"  - \"Why should we keep our environment clean?\"")
-        print(f"  - \"What are different types of houses?\"")
+        # No good content found - check if it's a question
+        if any(word in q_lower for word in ["who", "what", "when", "where", "why", "how", "explain", "describe"]):
+            # It's a question but not in NCERT - suggest related topics
+            print(f"\nMODE: CONVERSATION 💬 (Topic not in NCERT)")
+            print(f"\nI specialize in NCERT textbook content for Classes 1-7 📚")
+            print(f"While I don't have information about that specific topic, I can help you with many interesting subjects!")
+            print(f"\nPopular NCERT topics you might like:")
+            print(f"  🌿 **Science**: Photosynthesis, plants, animals, environment")
+            print(f"  🔢 **Math**: Addition, subtraction, multiplication, fractions")
+            print(f"  📖 **English**: Grammar, collective nouns, stories, poems")
+            print(f"  🏛️ **Social Studies**: Indian history, different types of houses, festivals")
+            print(f"\nWould you like to try asking about any of these NCERT topics?")
+        else:
+            # Regular conversation
+            print(f"\nMODE: CONVERSATION 💬 (No sources found)")
+            print(f"\nI can help you with NCERT textbook questions for Classes 1-7! 🎓")
+            print(f"\nTry asking about specific topics from your school books:")
+            print(f"  - \"What is photosynthesis?\"")
+            print(f"  - \"What are collective nouns?\"")
+            print(f"  - \"Why should we keep our environment clean?\"")
+            print(f"  - \"What are different types of houses?\"")
 
 
 if __name__ == "__main__":
