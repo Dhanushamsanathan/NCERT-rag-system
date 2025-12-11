@@ -277,7 +277,7 @@ Would you like to try asking about any of these NCERT topics?"""
         return jsonify({'error': 'Internal server error'}), 500
 
 # TTS Configuration
-GEMINI_API_KEY = "AIzaSyBpFM3I-RS0irMdu-yXaT5OWtcuE9PaKv0"
+GEMINI_API_KEY = "yourkey"
 GEMINI_TTS_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
 @app.route('/api/tts/synthesize', methods=['POST'])
