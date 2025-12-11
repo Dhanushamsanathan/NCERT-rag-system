@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NCERT RAG Chatbot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 800px;
+            width: 100%;
+            margin: 20px auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 500px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.bot {
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            position: relative;
+        }
+
+        .message.user .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message.bot .message-bubble {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .message.info {
+            justify-content: center;
+        }
+
+        .message.info .message-bubble {
+            background: #e3f2fd;
+            color: #1976d2;
+            font-size: 14px;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .sources {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .input-container {
+            padding: 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .message-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button, .mic-button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 50px;
+        }
+
+        .send-button:hover, .mic-button:hover {
+            background: #5a6fd8;
+        }
+
+        .send-button:disabled, .mic-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .mic-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            padding: 0;
+        }
+
+        .mic-button.recording {
+            background: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 8px 16px;
+            margin-bottom: 15px;
+            max-width: 70%;
+        }
+
+        .typing-indicator .message-bubble {
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        .typing-indicator span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #667eea;
+            margin: 0 2px;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .example-questions {
+            margin: 10px 0;
+        }
+
+        .example-questions h4 {
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .example-question {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 8px 12px;
+            border-radius: 15px;
+            display: inline-block;
+            margin: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 13px;
+        }
+
+        .example-question:hover {
+            background: #bbdefb;
+        }
+
+        .voice-status {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            text-align: center;
+            min-height: 18px;
+        }
+
+        .audio-controls {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            display: flex;
+            gap: 5px;
+        }
+
+        .audio-button {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0,0,0,0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+
+        .audio-button:hover {
+            background: rgba(0,0,0,0.2);
+        }
+
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .message-bubble {
+                max-width: 85%;
+            }
+
+            .example-question {
+                font-size: 12px;
+                padding: 6px 10px;
+            }
+
+            .mic-button {
+                width: 45px;
+                height: 45px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 NCERT RAG Chatbot</h1>
+        <p>Your intelligent tutor for Classes 1-7 • Click the mic 🎤 to speak</p>
+    </div>
+
+    <div class="chat-container">
+        <div class="messages" id="messages">
+            <div class="message bot">
+                <div class="message-bubble">
+                    Hello! 👋 I'm your NCERT tutor helper. I can help you with questions from Classes 1-7 using actual NCERT content.
+
+Here are some things you can ask me:
+🌿 What is photosynthesis?
+🔢 How to solve math problems?
+📖 What are collective nouns?
+🏛️ Why should we keep our environment clean?
+
+You can type your question or click the microphone button to speak! 🎤
+                </div>
+            </div>
+        </div>
+
+        <div class="typing-indicator" id="typing">
+            <div class="message bot">
+                <div class="message-bubble">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <div class="input-wrapper">
+                <input type="text"
+                       class="message-input"
+                       id="messageInput"
+                       placeholder="Type your question or click mic to speak..."
+                       autocomplete="off">
+                <button class="mic-button" id="micButton" onclick="toggleSpeech()" title="Click to speak">
+                    🎤
+                </button>
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    Send
+                </button>
+            </div>
+            <div class="voice-status" id="voiceStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const micButton = document.getElementById('micButton');
+        const voiceStatus = document.getElementById('voiceStatus');
+        const typingIndicator = document.getElementById('typing');
+
+        // Speech Recognition setup
+        let recognition = null;
+        let isRecording = false;
+        let autoPlayAudio = true; // Auto-play audio responses
+
+        // Check if speech recognition is supported
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isRecording = true;
+                micButton.classList.add('recording');
+                micButton.innerHTML = '🔴';
+                voiceStatus.textContent = 'Listening... Speak now!';
+            };
+
+            recognition.onresult = (event) => {
+                const current = event.resultIndex;
+                const transcript = event.results[current][0].transcript;
+                messageInput.value = transcript;
+
+                if (event.results[current].isFinal) {
+                    voiceStatus.textContent = `Heard: "${transcript}"`;
+                    setTimeout(() => {
+                        if (isRecording) {
+                            stopRecording();
+                            sendMessage();
+                        }
+                    }, 500);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                voiceStatus.textContent = `Error: ${event.error}. Please try again.`;
+                stopRecording();
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    stopRecording();
+                }
+            };
+        } else {
+            micButton.style.display = 'none';
+            voiceStatus.textContent = 'Speech recognition not supported in your browser';
+        }
+
+        function toggleSpeech() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            if (recognition && !isRecording) {
+                recognition.start();
+            }
+        }
+
+        function stopRecording() {
+            if (recognition && isRecording) {
+                recognition.stop();
+            }
+            isRecording = false;
+            micButton.classList.remove('recording');
+            micButton.innerHTML = '🎤';
+        }
+
+        // Text-to-speech function
+        async function speakText(text, language = 'en') {
+            if (!autoPlayAudio) return;
+
+            // Use browser's native speech synthesis directly (no backend call)
+            if ('speechSynthesis' in window) {
+                // Cancel any ongoing speech
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = language === 'ta' ? 'ta-IN' :
+                                 language === 'te' ? 'te-IN' :
+                                 language === 'hi' ? 'hi-IN' : 'en-US';
+                utterance.rate = 0.9;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+
+                // Find a good voice
+                const voices = window.speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                    // Try to find a matching voice
+                    const voice = voices.find(v => v.lang === utterance.lang) ||
+                                 voices.find(v => v.lang.startsWith(language)) ||
+                                 voices.find(v => v.lang === 'en-US') ||
+                                 voices[0];
+                    utterance.voice = voice;
+                }
+
+                // Speak the text
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.error('Speech synthesis not supported in this browser');
+            }
+        }
+
+        // Add enter key support
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        function addMessage(message, isUser = false, mode = null, sources = []) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            bubbleDiv.textContent = message;
+
+            // Add audio controls for bot messages
+            if (!isUser && message.length > 0) {
+                const audioControls = document.createElement('div');
+                audioControls.className = 'audio-controls';
+
+                const speakButton = document.createElement('button');
+                speakButton.className = 'audio-button';
+                speakButton.innerHTML = '🔊';
+                speakButton.title = 'Play audio';
+                speakButton.onclick = () => speakText(message);
+
+                audioControls.appendChild(speakButton);
+                bubbleDiv.appendChild(audioControls);
+            }
+
+            messageDiv.appendChild(bubbleDiv);
+
+            // Add sources if available
+            if (sources && sources.length > 0) {
+                const sourcesDiv = document.createElement('div');
+                sourcesDiv.className = 'sources';
+                sourcesDiv.innerHTML = `<strong>Sources:</strong> ` +
+                    sources.map(s => `[${s.class} ${s.subject}]`).join(' ');
+                messageDiv.appendChild(sourcesDiv);
+            }
+
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            // Auto-play bot responses
+            if (!isUser && autoPlayAudio) {
+                speakText(message);
+            }
+        }
+
+        function showTyping() {
+            typingIndicator.style.display = 'block';
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function hideTyping() {
+            typingIndicator.style.display = 'none';
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // Add user message
+            addMessage(message, true);
+            messageInput.value = '';
+            voiceStatus.textContent = '';
+
+            // Disable send button and mic
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+            micButton.disabled = true;
+
+            // Show typing indicator
+            showTyping();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+
+                hideTyping();
+
+                if (data.error) {
+                    addMessage('Oops! Something went wrong. Please try again.', false);
+                } else {
+                    addMessage(data.response, false, data.mode, data.sources);
+                }
+            } catch (error) {
+                hideTyping();
+                addMessage('Connection error. Please check if the server is running.', false);
+            }
+
+            // Re-enable controls
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+            micButton.disabled = false;
+            messageInput.focus();
+        }
+
+        // Focus input on load
+        messageInput.focus();
+
+        // Load voices when ready
+        if ('speechSynthesis' in window) {
+            // Chrome needs to wait for voices to be loaded
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = () => {
+                    // Voices are loaded
+                };
+            }
+            // Initial voice load
+            speechSynthesis.getVoices();
+        }
+    </script>
+</body>
+</html>
