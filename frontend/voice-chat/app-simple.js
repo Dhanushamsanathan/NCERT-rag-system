@@ -1,60 +1,8 @@
-// Import existing services
-import { PineconeRAGService } from '../../pinecone-rag/services/pineconeRAGService.js';
-import { GeminiSpeechService } from '../../pinecone-rag/services/geminiSpeechService.js';
-
-// Global variables
+// Simple voice chat implementation without external dependencies
 let currentAudio = null;
 let isRecording = false;
 let recognition = null;
-let ragService = null;
-let speechService = null;
 let isLoading = false;
-
-// Initialize services
-async function initializeServices() {
-    try {
-        // Initialize RAG service
-        ragService = new PineconeRAGService('http://localhost:5001/api');
-
-        // Initialize speech service
-        speechService = new GeminiSpeechService({
-            apiKey: 'AIzaSyBpFM3I-RS0irMdu-yXaT5OWtcuE9PaKv0',
-            language: 'en-IN-Wavenet-D',
-            baseUrl: 'http://localhost:5001/api'
-        });
-
-        // Initialize speech recognition
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = false;
-            recognition.interimResults = false;
-            recognition.lang = 'en-IN';
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                document.getElementById('messageInput').value = transcript;
-                stopRecording();
-                sendMessage();
-            };
-
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-                stopRecording();
-                showNotification('Speech recognition failed. Please try again.');
-            };
-
-            recognition.onend = () => {
-                stopRecording();
-            };
-        }
-
-        console.log('Services initialized successfully');
-    } catch (error) {
-        console.error('Error initializing services:', error);
-        showNotification('Failed to initialize services');
-    }
-}
 
 // DOM elements
 const chatMessages = document.getElementById('chatMessages');
@@ -63,6 +11,9 @@ const sendBtn = document.getElementById('sendBtn');
 const micBtn = document.getElementById('micBtn');
 const loader = document.getElementById('loader');
 const connectionStatus = document.getElementById('connectionStatus');
+
+// API URL
+const API_URL = 'http://localhost:5001/api';
 
 // Event listeners
 messageInput.addEventListener('keypress', (e) => {
@@ -93,15 +44,25 @@ async function sendMessage() {
 
     try {
         // Query RAG service
-        const response = await ragService.query({ question: message });
+        const response = await fetch(`${API_URL}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: message
+            })
+        });
+
+        const data = await response.json();
 
         hideTypingIndicator();
 
-        if (response.answer) {
+        if (data.response) {
             // Add bot response
-            addMessage(response.answer, 'bot', response.sources);
+            addMessage(data.response, 'bot', data.sources);
 
-            // Auto-play TTS
+            // Auto-play TTS after a short delay
             setTimeout(() => {
                 const lastBotMessage = document.querySelector('.message:last-child .btn-audio');
                 if (lastBotMessage) {
@@ -187,8 +148,8 @@ async function playMessage(button, text) {
     button.innerHTML = '<i class="icon">⏸️</i> Pause';
 
     try {
-        // Use speech service or fallback API
-        const response = await fetch('http://localhost:5001/api/speak', {
+        // Use TTS API
+        const response = await fetch(`${API_URL}/speak`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -217,7 +178,7 @@ async function playMessage(button, text) {
         button.classList.remove('playing');
         button.innerHTML = '<i class="icon">🔊</i> Play';
 
-        if (error.error === 'quota_exceeded') {
+        if (error.message.includes('quota')) {
             showNotification('Speech quota exceeded. Text-only mode available.');
         } else {
             showNotification('Speech temporarily unavailable');
@@ -315,17 +276,48 @@ function showNotification(message) {
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
-    initializeServices();
-});
+    // Initialize speech recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-IN';
 
-// Check connection
-setInterval(() => {
-    fetch('http://localhost:5001/api/health')
-    .then(response => response.json())
-    .then(() => {
-        connectionStatus.innerHTML = '<span class="status-dot"></span><span>Connected</span>';
-    })
-    .catch(() => {
-        connectionStatus.innerHTML = '<span class="status-dot" style="background: #ff6b6b;"></span><span>Disconnected</span>';
-    });
-}, 5000);
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            messageInput.value = transcript;
+            stopRecording();
+            sendMessage();
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            stopRecording();
+            showNotification('Speech recognition failed. Please try again.');
+        };
+
+        recognition.onend = () => {
+            stopRecording();
+        };
+    }
+
+    // Check connection status
+    setInterval(async () => {
+        try {
+            // Try chat endpoint with minimal test message
+            const response = await fetch(`${API_URL}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: 'test' })
+            });
+            if (response.ok) {
+                connectionStatus.innerHTML = '<span class="status-dot"></span><span>Connected</span>';
+            } else {
+                connectionStatus.innerHTML = '<span class="status-dot" style="background: #ff6b6b;"></span><span>Disconnected</span>';
+            }
+        } catch {
+            connectionStatus.innerHTML = '<span class="status-dot" style="background: #ff6b6b;"></span><span>Disconnected</span>';
+        }
+    }, 5000);
+});

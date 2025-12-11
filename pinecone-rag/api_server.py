@@ -14,12 +14,13 @@ from urllib.parse import urlparse
 import time
 
 # Add parent directory to path
-sys.path.append('/home/dhanush/main_frames/NCERT-rag-system')
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rag_pipeline_pinecone import PineconeRAGPipeline
 
 # Global variables
 rag_pipeline = None
 pipeline_lock = threading.Lock()
+pipeline_thread = None
 
 class APIHandler(BaseHTTPRequestHandler):
     def _set_cors(self):
@@ -32,6 +33,16 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self._set_cors()
         self.end_headers()
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        # Simple health check
+        if path == '/api/health':
+            self._json({"status": "ok", "message": "NCERT API is running"})
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def do_POST(self):
         global rag_pipeline
@@ -53,7 +64,10 @@ class APIHandler(BaseHTTPRequestHandler):
             with pipeline_lock:
                 if rag_pipeline is None:
                     # Load in background and return loading message
-                    threading.Thread(target=self._load_pipeline, daemon=True).start()
+                    global pipeline_thread
+                    if pipeline_thread is None:
+                        pipeline_thread = threading.Thread(target=self._load_pipeline, daemon=True)
+                        pipeline_thread.start()
                     self._json({
                         "response": "🔍 Loading NCERT database... Please wait.",
                         "loading": True
@@ -66,6 +80,12 @@ class APIHandler(BaseHTTPRequestHandler):
                         "response": "Still loading... Please wait.",
                         "loading": True
                     })
+                    return
+                elif rag_pipeline == 'error':
+                    self._json({
+                        "error": "Failed to load NCERT database. Please check server logs.",
+                        "loading": False
+                    }, 500)
                     return
 
             # Query RAG system
@@ -155,14 +175,19 @@ class APIHandler(BaseHTTPRequestHandler):
         global rag_pipeline
         with pipeline_lock:
             rag_pipeline = 'loading'  # Mark as loading
-            try:
-                rag = PineconeRAGPipeline()
-                rag.load_index()
+
+        try:
+            rag = PineconeRAGPipeline()
+            rag.load_index()
+            with pipeline_lock:
                 rag_pipeline = rag
-                print("✅ Pinecone RAG loaded successfully!")
-            except Exception as e:
-                print(f"❌ Error loading pipeline: {e}")
-                rag_pipeline = None
+            print("✅ Pinecone RAG loaded successfully!")
+        except Exception as e:
+            print(f"❌ Error loading pipeline: {e}")
+            import traceback
+            traceback.print_exc()
+            with pipeline_lock:
+                rag_pipeline = 'error'
 
     def _json(self, data, status=200):
         """Send JSON response"""
