@@ -117,7 +117,9 @@ class APIHandler(BaseHTTPRequestHandler):
 
             try:
                 import requests
-                GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyBpFM3I-RS0irMdu-yXaT5OWtcuE9PaKv0')
+                GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+                if not GEMINI_API_KEY:
+                    raise ValueError("GEMINI_API_KEY environment variable not set")
                 url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
                 # Natural Indian teacher prompt
