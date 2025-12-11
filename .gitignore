@@ -151,3 +151,4 @@ ncert_index/
 processed_chunks/
 
 .env.example
+vector_store/embeddings.npy

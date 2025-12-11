@@ -769,9 +769,6 @@ Improved (only if needed, otherwise return original):"""
         # Step 4: Generate answer from context
         try:
             answer = self.generator.generate(question, context, retrieved)
-            if len(answer.strip()) < 20:
-                # Fallback for very short responses
-                answer = f"According to NCERT 📚\n\nI found information about this topic in your textbooks with examples and activities."
         except Exception as e:
             answer = f"According to NCERT 📚\n\nI found information about this topic in your NCERT textbooks."
 
@@ -812,16 +809,15 @@ Improved (only if needed, otherwise return original):"""
         """Use LLM to verify if answer is good and improve if needed"""
 
         # Check if answer is reasonable
-        if len(answer) > 30 and "NCERT" in answer:
-            # Answer has good length and mentions NCERT, return as-is
+        if len(answer) > 30:
+            # Answer has good length, return as-is
             return answer
 
         # Check retrieval quality
         max_score = max([r['score'] for r in retrieved]) if retrieved else 0
-        avg_score = sum([r['score'] for r in retrieved]) / len(retrieved) if retrieved else 0
 
         # If scores are good, return as-is
-        if max_score > 0.02 and len(answer) > 20:
+        if max_score > 0.02 and len(answer) > 0:
             return answer
 
         # Use LLM to verify and improve response

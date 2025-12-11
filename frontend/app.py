@@ -17,13 +17,19 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rag_pipeline import RAGPipeline
+# Import Pinecone RAG for faster responses
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'pinecone-rag'))
+from rag_pipeline_pinecone import PineconeRAGPipeline
 import re
 
 app = Flask(__name__)
 CORS(app)
 
-# Global RAG instance
+# Global RAG instances
 rag = None
+pinecone_rag = None  # Fast Pinecone RAG
 
 # Conversation cache for follow-up questions
 conversation_cache = {
@@ -114,9 +120,26 @@ def update_conversation_cache(question, answer):
                     break
 
 def init_rag():
-    """Initialize RAG pipeline"""
-    global rag
-    if rag is None:
+    """Initialize RAG pipeline - Use Pinecone for faster responses"""
+    global rag, pinecone_rag
+
+    # Try to initialize Pinecone RAG first (faster)
+    if pinecone_rag is None:
+        try:
+            pinecone_rag = PineconeRAGPipeline()
+            success = pinecone_rag.load_index()
+            if success:
+                print("✅ Pinecone RAG loaded successfully! (Fast)")
+            else:
+                print("⚠️ Pinecone not available, falling back to FAISS")
+                pinecone_rag = None
+        except Exception as e:
+            print(f"⚠️ Pinecone initialization failed: {e}")
+            pinecone_rag = None
+
+    # Fallback to FAISS if Pinecone fails
+    if pinecone_rag is None and rag is None:
+        print("Loading FAISS RAG...")
         rag = RAGPipeline()
         # Change to parent directory for vector store
         import os
@@ -124,7 +147,7 @@ def init_rag():
         os.chdir('..')  # Go to parent directory
         rag.load_index()
         os.chdir(original_dir)  # Return to frontend directory
-        print("RAG pipeline loaded successfully!")
+        print("FAISS RAG pipeline loaded successfully!")
 
 @app.route('/')
 def index():
@@ -178,14 +201,22 @@ def chat():
             # Combine last topic with current question for better RAG results
             search_query = f"{last_topic} {question}"
 
-        # Use RAG for queries
-        result = rag.query(search_query, top_k=3)
-        sources = result.get('sources', [])
+        # Use RAG for queries - Prefer Pinecone if available
+        if pinecone_rag:
+            print("Using Pinecone RAG (fast)")
+            result = pinecone_rag.query(search_query, top_k=3)
+            sources = result.get('sources', [])
+        else:
+            print("Using FAISS RAG")
+            result = rag.query(search_query, top_k=3)
+            sources = result.get('sources', [])
 
         if sources:
             max_score = max([s['score'] for s in sources])
 
-            if max_score > 0.02:
+            # Pinecone uses cosine similarity (0-1), FAISS uses different scores
+            threshold = 0.5 if pinecone_rag else 0.02
+            if max_score > threshold:
                 # Good content found
                 response_text = result['answer']
                 mode = 'ncert_rag'
@@ -260,21 +291,21 @@ def synthesize_speech():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
-        # Language voice mapping for Gemini
+        # Language voice mapping for Gemini - Natural Indian voices
         voice_map = {
-            'en': 'en-US-Standard-A',
-            'ta': 'ta-IN-Standard-A',
-            'te': 'te-IN-Standard-A',
-            'hi': 'hi-IN-Standard-A'
+            'en': 'en-IN-Wavenet-D',  # Indian English - Natural male voice
+            'ta': 'ta-IN-Wavenet-A',  # Tamil - Natural voice
+            'te': 'te-IN-Wavenet-A',  # Telugu - Natural voice
+            'hi': 'hi-IN-Wavenet-D'   # Hindi - Natural male voice
         }
 
-        voice = voice_map.get(language, 'en-US-Standard-A')
+        voice = voice_map.get(language, 'en-IN-Wavenet-D')
 
         # Call Gemini TTS API
         payload = {
             "contents": [{
                 "parts": [{
-                    "text": f"Speak this text naturally: {text}"
+                    "text": f"Speak in a natural, warm, conversational tone like a friendly Indian school teacher explaining concepts to students. Your responses should sound human and effortless — simple words, smooth flow, small pauses, and natural phrasing. Avoid robotic structure, avoid repeating the same style, and don't sound like an AI. Use gentle encouragement, relatable examples, and a caring teaching style, just like a real teacher who wants students to understand clearly. Text to speak: {text}"
                 }]
             }],
             "generationConfig": {
@@ -341,18 +372,18 @@ def synthesize_speech_stream():
             # For now, use non-streaming approach (simplified)
             # In production, this would use actual streaming from Gemini
             voice_map = {
-                'en': 'en-US-Standard-A',
-                'ta': 'ta-IN-Standard-A',
-                'te': 'te-IN-Standard-A',
-                'hi': 'hi-IN-Standard-A'
+                'en': 'en-IN-Wavenet-D',  # Indian English - Natural male voice
+                'ta': 'ta-IN-Wavenet-A',  # Tamil - Natural voice
+                'te': 'te-IN-Wavenet-A',  # Telugu - Natural voice
+                'hi': 'hi-IN-Wavenet-D'   # Hindi - Natural male voice
             }
 
-            voice = voice_map.get(language, 'en-US-Standard-A')
+            voice = voice_map.get(language, 'en-IN-Wavenet-D')
 
             payload = {
                 "contents": [{
                     "parts": [{
-                        "text": f"Speak this text naturally: {text}"
+                        "text": f"Speak this text naturally like a friendly Indian teacher helping students: {text}"
                     }]
                 }],
                 "generationConfig": {

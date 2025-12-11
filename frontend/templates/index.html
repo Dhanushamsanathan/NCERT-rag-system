@@ -438,38 +438,108 @@ You can type your question or click the microphone button to speak! 🎤
             micButton.innerHTML = '🎤';
         }
 
-        // Text-to-speech function
+        // Track current audio
+        let currentAudio = null;
+        let currentAudioElement = null;
+
+        // Backend TTS function with stop functionality
+        async function speakTextWithTTS(text, button, language = 'en') {
+            // If audio is playing and this is the same button, stop it
+            if (currentAudio && button.dataset.isPlaying === 'true') {
+                currentAudio.pause();
+                currentAudio = null;
+                button.innerHTML = '🔊';
+                button.title = 'Play audio';
+                button.dataset.isPlaying = 'false';
+                return;
+            }
+
+            // Stop any existing audio
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+
+            // Update button to show playing state
+            button.innerHTML = '⏸️';
+            button.title = 'Stop audio';
+            button.dataset.isPlaying = 'true';
+
+            try {
+                const response = await fetch('/api/tts/synthesize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text, language: language })
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.audioData) {
+                    // Create audio element from base64
+                    const audio = new Audio('data:audio/mp3;base64,' + data.audioData);
+                    currentAudio = audio;
+
+                    audio.onended = () => {
+                        button.innerHTML = '🔊';
+                        button.title = 'Play audio';
+                        button.dataset.isPlaying = 'false';
+                        currentAudio = null;
+                    };
+
+                    audio.onerror = () => {
+                        button.innerHTML = '🔊';
+                        button.title = 'Play audio';
+                        button.dataset.isPlaying = 'false';
+                        currentAudio = null;
+                    };
+
+                    await audio.play();
+                } else {
+                    // Fallback to browser TTS
+                    speakText(text, language);
+                    button.innerHTML = '🔊';
+                    button.title = 'Play audio';
+                    button.dataset.isPlaying = 'false';
+                }
+            } catch (error) {
+                console.error('TTS error:', error);
+                // Fallback to browser TTS
+                speakText(text, language);
+                button.innerHTML = '🔊';
+                button.title = 'Play audio';
+                button.dataset.isPlaying = 'false';
+            }
+        }
+
+        // Text-to-speech function (fallback)
         async function speakText(text, language = 'en') {
             if (!autoPlayAudio) return;
 
-            // Use browser's native speech synthesis directly (no backend call)
+            // Cancel any ongoing speech
             if ('speechSynthesis' in window) {
-                // Cancel any ongoing speech
                 window.speechSynthesis.cancel();
 
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = language === 'ta' ? 'ta-IN' :
                                  language === 'te' ? 'te-IN' :
-                                 language === 'hi' ? 'hi-IN' : 'en-US';
+                                 language === 'hi' ? 'hi-IN' : 'en-IN'; // Changed to Indian English
                 utterance.rate = 0.9;
                 utterance.pitch = 1;
                 utterance.volume = 1;
 
-                // Find a good voice
+                // Find Indian voice if available
                 const voices = window.speechSynthesis.getVoices();
                 if (voices.length > 0) {
-                    // Try to find a matching voice
-                    const voice = voices.find(v => v.lang === utterance.lang) ||
-                                 voices.find(v => v.lang.startsWith(language)) ||
-                                 voices.find(v => v.lang === 'en-US') ||
+                    // Try to find Indian English voice first
+                    const voice = voices.find(v => v.lang === 'en-IN') ||
+                                 voices.find(v => v.name.toLowerCase().includes('indian')) ||
+                                 voices.find(v => v.name.toLowerCase().includes('google')) ||
                                  voices[0];
                     utterance.voice = voice;
                 }
 
-                // Speak the text
                 window.speechSynthesis.speak(utterance);
-            } else {
-                console.error('Speech synthesis not supported in this browser');
             }
         }
 
@@ -497,7 +567,7 @@ You can type your question or click the microphone button to speak! 🎤
                 speakButton.className = 'audio-button';
                 speakButton.innerHTML = '🔊';
                 speakButton.title = 'Play audio';
-                speakButton.onclick = () => speakText(message);
+                speakButton.onclick = () => speakTextWithTTS(message, speakButton);
 
                 audioControls.appendChild(speakButton);
                 bubbleDiv.appendChild(audioControls);
