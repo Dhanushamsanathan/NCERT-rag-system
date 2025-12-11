@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NCERT Voice Learning Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-content">
+                <h1>🎓 NCERT Voice Learning Assistant</h1>
+                <p>Classes 1-7 • Learn with voice and text</p>
+            </div>
+            <div class="status" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span>Connected</span>
+            </div>
+        </header>
+
+        <main class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot">
+                    <div class="avatar">🤖</div>
+                    <div class="message-content">
+                        <div class="text">
+                            Hello! I'm your NCERT learning assistant. You can:
+                            <br><br>
+                            📝 Type your questions, or
+                            <br>🎤 Click the microphone to speak
+                            <br>🔊 I'll reply with voice too!
+                        </div>
+                        <div class="actions">
+                            <button class="btn-audio" onclick="playMessage(this)" data-text="Hello! I am your NCERT learning assistant. You can type your questions or click the microphone to speak. I will reply with voice too!">
+                                <i class="icon">🔊</i>
+                                Play
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <div class="examples" id="examples">
+            <button class="example-chip" onclick="askExample('What is photosynthesis?')">
+                🌱 What is photosynthesis?
+            </button>
+            <button class="example-chip" onclick="askExample('How do plants grow?')">
+                🌿 How do plants grow?
+            </button>
+            <button class="example-chip" onclick="askExample('What are nouns?')">
+                📝 What are nouns?
+            </button>
+            <button class="example-chip" onclick="askExample('Tell me about the solar system')">
+                🪐 Tell me about the solar system
+            </button>
+        </div>
+
+        <footer class="input-container">
+            <div class="input-wrapper">
+                <input
+                    type="text"
+                    id="messageInput"
+                    placeholder="Type your question or click mic to speak..."
+                    autocomplete="off"
+                >
+                <div class="voice-controls">
+                    <button
+                        id="micBtn"
+                        class="btn-mic"
+                        onclick="toggleRecording()"
+                        title="Click to speak (Hold to record)"
+                    >
+                        <i class="icon">🎤</i>
+                    </button>
+                    <button
+                        id="sendBtn"
+                        class="btn-send"
+                        onclick="sendMessage()"
+                        title="Send message"
+                    >
+                        <i class="icon">➤</i>
+                    </button>
+                </div>
+            </div>
+        </footer>
+
+        <div id="loader" class="loader hidden">
+            <div class="loader-spinner"></div>
+            <p>Loading NCERT database...</p>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

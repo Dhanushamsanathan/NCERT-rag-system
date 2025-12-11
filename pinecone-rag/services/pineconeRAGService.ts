@@ -40,25 +40,32 @@ export class PineconeRAGService {
     const startTime = performance.now();
 
     try {
-      const response = await fetch(`${this.baseUrl}/pinecone/query`, {
+      // Use our simple API endpoint
+      const response = await fetch(`${this.baseUrl}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(query),
+        body: JSON.stringify({
+          message: query.question
+        }),
       });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data: PineconeResponse = await response.json();
+      const data = await response.json();
 
-      // Add response time
-      const endTime = performance.now();
-      data.response_time = Math.round(endTime - startTime);
+      // Convert API response to expected format
+      const formattedResponse: PineconeResponse = {
+        answer: data.response || null,
+        sources: data.sources || [],
+        max_score: 0.8, // Default score
+        response_time: Math.round(performance.now() - startTime)
+      };
 
-      return data;
+      return formattedResponse;
     } catch (error) {
       console.error('Pinecone RAG Service Error:', error);
       return {

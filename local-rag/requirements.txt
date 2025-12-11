@@ -1,0 +1,25 @@
+# NCERT RAG System v1 - Requirements
+# ===================================
+
+# Core
+python-dotenv==1.0.0
+
+# Text Processing
+nltk==3.8.1
+
+# Embeddings
+sentence-transformers==2.2.2
+
+# Vector Store
+faiss-cpu==1.7.4
+
+# LLM API
+openai==1.6.1
+requests==2.31.0
+
+# Utilities
+numpy==1.24.3
+tqdm==4.66.1
+
+# Hybrid Search
+rank-bm25==0.2.2
